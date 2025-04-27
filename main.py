@@ -144,39 +144,72 @@ def main():
         if not catalog_images:
             st.warning("No images in the catalog. Please add images to the 'catalog_images' directory.")
         else:
-            # Create a grid for catalog images
-            cols_per_row = 2
-            for i in range(0, len(catalog_images), cols_per_row):
-                cols = st.columns(cols_per_row)
-                for j, col in enumerate(cols):
-                    if i + j < len(catalog_images):
-                        img_name = catalog_images[i + j]
-                        img_path = os.path.join("catalog_images", img_name)
-                        img = Image.open(img_path)
-                        
-                        with col:
-                            st.image(img, caption=img_name, use_column_width=True)
-                            if st.button(f"Analyze {img_name}", key=f"analyze_{i+j}"):
-                                with st.spinner("Analyzing image..."):
-                                    # Process image
-                                    annotated_image, result = process_image(img, model)
-                                    
-                                    # Update session state
-                                    st.session_state.original_image = img
-                                    st.session_state.annotated_image = annotated_image
-                                    st.session_state.results = result
+            # Create a horizontal scrollable container for catalog images
+            st.markdown("""
+                <style>
+                .catalog-container {
+                    display: flex;
+                    overflow-x: auto;
+                    gap: 20px;
+                    padding: 20px 0;
+                    scrollbar-width: thin;
+                    scrollbar-color: #888 #f1f1f1;
+                }
+                .catalog-container::-webkit-scrollbar {
+                    height: 8px;
+                }
+                .catalog-container::-webkit-scrollbar-track {
+                    background: #f1f1f1;
+                    border-radius: 4px;
+                }
+                .catalog-container::-webkit-scrollbar-thumb {
+                    background: #888;
+                    border-radius: 4px;
+                }
+                .catalog-container::-webkit-scrollbar-thumb:hover {
+                    background: #555;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            # Create a container for the catalog
+            catalog_container = st.container()
+            
+            # Create columns for the catalog items
+            cols = st.columns(len(catalog_images))
+            
+            # Display images in columns
+            for idx, (col, img_name) in enumerate(zip(cols, catalog_images)):
+                img_path = os.path.join("catalog_images", img_name)
+                img = Image.open(img_path)
+                
+                with col:
+                    st.image(img, caption=img_name, width=200)
+                    if st.button(f"Analyze {img_name}", key=f"analyze_{img_name}"):
+                        with st.spinner("Analyzing image..."):
+                            # Process image
+                            annotated_image, result = process_image(img, model)
+                            
+                            # Update session state
+                            st.session_state.original_image = img
+                            st.session_state.annotated_image = annotated_image
+                            st.session_state.results = result
     
     with right_col:
         # Results section
         st.header("Detection Results")
         
         if st.session_state.original_image is not None and st.session_state.annotated_image is not None:
-            # Display original and annotated images
-            st.subheader("Original Image")
-            st.image(st.session_state.original_image, use_column_width=True)
+            # Display original and annotated images side by side
+            col1, col2 = st.columns(2)
             
-            st.subheader("Detected Image")
-            st.image(st.session_state.annotated_image, use_column_width=True)
+            with col1:
+                st.subheader("Original Image")
+                st.image(st.session_state.original_image, use_column_width=True)
+            
+            with col2:
+                st.subheader("Detected Image")
+                st.image(st.session_state.annotated_image, use_column_width=True)
             
             # Display detection information
             if st.session_state.results and st.session_state.results["predictions"]:
