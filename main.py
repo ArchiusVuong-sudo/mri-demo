@@ -14,7 +14,8 @@ load_dotenv()
 st.set_page_config(
     page_title="Brain Tumor Detection MRI",
     page_icon="🧠",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Initialize Roboflow
@@ -23,6 +24,17 @@ def load_model():
     rf = Roboflow(api_key=os.getenv("ROBOFLOW_API_KEY"))
     project = rf.workspace().project("brain-tumour-detection-mri")
     return project.version(1).model
+
+# Function to resize image to fixed dimensions
+def resize_image(image, target_size=(400, 400)):
+    # Handle numpy array (from OpenCV)
+    if isinstance(image, np.ndarray):
+        return cv2.resize(image, target_size, interpolation=cv2.INTER_LANCZOS4)
+    # Handle PIL Image
+    elif isinstance(image, Image.Image):
+        return image.resize(target_size, Image.Resampling.LANCZOS)
+    else:
+        raise TypeError("Image must be either numpy array or PIL Image")
 
 # Function to process image and get predictions
 def process_image(image, model):
@@ -99,8 +111,21 @@ def get_catalog_images():
 
 # Main app
 def main():
-    st.title("🧠 Brain Tumor Detection MRI")
-    st.write("Upload an MRI image or select from our catalog to detect brain tumors.")
+    # Sidebar
+    with st.sidebar:
+        st.title("🧠 Brain Tumor Detection")
+        st.markdown("---")
+        st.markdown("### About")
+        st.info("This application uses AI to detect brain tumors in MRI scans. Upload an image or select from our catalog to begin analysis.")
+        st.markdown("---")
+        st.markdown("### Instructions")
+        st.markdown("1. Upload an MRI image or select from catalog")
+        st.markdown("2. Click 'Analyze' to process the image")
+        st.markdown("3. View detection results and details")
+        st.markdown("---")
+
+    # Main content
+    st.title("Brain Tumor Detection in MRI Scans")
     
     # Load model
     model = load_model()
@@ -112,110 +137,79 @@ def main():
         st.session_state.original_image = None
     if 'annotated_image' not in st.session_state:
         st.session_state.annotated_image = None
-    
-    # Create two columns for the layout
-    left_col, right_col = st.columns([1, 1])
-    
-    with left_col:
+
+    # Create two main columns for input and results
+    input_col, results_col = st.columns([1, 1])
+
+    # Input section (left column)
+    with input_col:
+        st.header("📤 Input Options")
+        
         # Upload section
-        st.header("Upload Your MRI Image")
+        st.subheader("Upload New Image")
         uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
         
-        # Process uploaded image
         if uploaded_file is not None:
-            # Display original image
             image = Image.open(uploaded_file)
             st.session_state.original_image = image
             
-            # Process button
-            if st.button("Analyze Uploaded Image"):
+            # Resize uploaded image to fixed dimensions
+            resized_upload = resize_image(image, (600, 600))
+            st.image(resized_upload, caption="Uploaded Image")
+            if st.button("🔍 Analyze Uploaded Image", type="primary", use_container_width=True):
                 with st.spinner("Analyzing image..."):
-                    # Process image
                     annotated_image, result = process_image(image, model)
                     st.session_state.annotated_image = annotated_image
                     st.session_state.results = result
         
         # Catalog section
-        st.header("Catalog Images")
-        
-        # Get catalog images
+        st.markdown("---")
+        st.subheader("📚 Sample MRI Images")
         catalog_images = get_catalog_images()
         
         if not catalog_images:
             st.warning("No images in the catalog. Please add images to the 'catalog_images' directory.")
         else:
-            # Create a horizontal scrollable container for catalog images
-            st.markdown("""
-                <style>
-                .catalog-container {
-                    display: flex;
-                    overflow-x: auto;
-                    gap: 20px;
-                    padding: 20px 0;
-                    scrollbar-width: thin;
-                    scrollbar-color: #888 #f1f1f1;
-                }
-                .catalog-container::-webkit-scrollbar {
-                    height: 8px;
-                }
-                .catalog-container::-webkit-scrollbar-track {
-                    background: #f1f1f1;
-                    border-radius: 4px;
-                }
-                .catalog-container::-webkit-scrollbar-thumb {
-                    background: #888;
-                    border-radius: 4px;
-                }
-                .catalog-container::-webkit-scrollbar-thumb:hover {
-                    background: #555;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            # Create a container for the catalog
-            catalog_container = st.container()
-            
-            # Create columns for the catalog items
-            cols = st.columns(len(catalog_images))
-            
-            # Display images in columns
-            for idx, (col, img_name) in enumerate(zip(cols, catalog_images)):
-                img_path = os.path.join("catalog_images", img_name)
-                img = Image.open(img_path)
-                
-                with col:
-                    st.image(img, caption=img_name, width=200)
-                    if st.button(f"Analyze {img_name}", key=f"analyze_{img_name}"):
-                        with st.spinner("Analyzing image..."):
-                            # Process image
-                            annotated_image, result = process_image(img, model)
-                            
-                            # Update session state
-                            st.session_state.original_image = img
-                            st.session_state.annotated_image = annotated_image
-                            st.session_state.results = result
-    
-    with right_col:
-        # Results section
-        st.header("Detection Results")
+            # Display catalog images in a grid with fixed dimensions
+            for i in range(0, len(catalog_images), 2):
+                cols = st.columns(2)
+                for j, col in enumerate(cols):
+                    if i + j < len(catalog_images):
+                        img_name = catalog_images[i + j]
+                        img_path = os.path.join("catalog_images", img_name)
+                        img = Image.open(img_path)
+                        
+                        # Resize image to fixed dimensions
+                        resized_img = resize_image(img, (400, 400))
+                        
+                        with col:
+                            st.image(resized_img, caption=img_name)
+                            if st.button(f"🔍 Analyze {img_name}", key=f"analyze_{img_name}", use_container_width=True):
+                                with st.spinner("Analyzing image..."):
+                                    annotated_image, result = process_image(img, model)
+                                    st.session_state.original_image = img
+                                    st.session_state.annotated_image = annotated_image
+                                    st.session_state.results = result
+
+    # Results section (right column)
+    with results_col:
+        st.header("📊 Detection Results")
         
-        if st.session_state.original_image is not None and st.session_state.annotated_image is not None:
-            # Display original and annotated images side by side
-            col1, col2 = st.columns(2)
+        if st.session_state.annotated_image is not None:
+            # Resize and display the detected image with fixed dimensions
+            resized_result = resize_image(st.session_state.annotated_image, (600, 600))
+            st.image(resized_result)
             
-            with col1:
-                st.subheader("Original Image")
-                st.image(st.session_state.original_image, use_column_width=True)
-            
-            with col2:
-                st.subheader("Detected Image")
-                st.image(st.session_state.annotated_image, use_column_width=True)
-            
-            # Display detection information
+            # Display detection information in an expander
             if st.session_state.results and st.session_state.results["predictions"]:
-                st.subheader("Detection Details")
-                for pred in st.session_state.results["predictions"]:
-                    st.write(f"- Class: {pred['class']}, Confidence: {pred['confidence']:.2f}")
+                with st.expander("🔍 Detection Details", expanded=True):
+                    for pred in st.session_state.results["predictions"]:
+                        confidence = pred['confidence'] * 100
+                        st.metric(
+                            label=f"Tumor Detection ({pred['class']})",
+                            value=f"{confidence:.1f}%",
+                            delta=f"{confidence - 40:.1f}% above threshold" if confidence > 40 else None
+                        )
             else:
                 st.info("No tumors detected in the image.")
         else:
